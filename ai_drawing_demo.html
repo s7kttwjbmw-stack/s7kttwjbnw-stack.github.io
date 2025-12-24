@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>创兴精密 - AI图纸智能识别与拆解系统</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <!-- 引入Fabric.js用于交互式图纸标注 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.0/fabric.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; }
+        body { background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); min-height: 100vh; padding: 20px; color: #333; }
+        .container { max-width: 1300px; margin: 0 auto; background: white; border-radius: 20px; box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1); overflow: hidden; }
+        header { background: linear-gradient(90deg, #1a2980, #26d0ce); color: white; padding: 30px; text-align: center; }
+        header h1 { font-size: 2.8em; margin-bottom: 10px; display: flex; align-items: center; justify-content: center; gap: 15px; }
+        .pain-points { background: #fff8e1; padding: 15px; margin: 20px; border-radius: 10px; border-left: 5px solid #ffb300; font-size: 0.95em; }
+        .content { display: flex; flex-wrap: wrap; padding: 25px; gap: 25px; }
+        .panel { background: #f9f9f9; border-radius: 15px; padding: 25px; box-shadow: 0 5px 15px rgba(0,0,0,0.05); }
+        .left-panel { flex: 1; min-width: 320px; }
+        .right-panel { flex: 2; min-width: 500px; }
+        h2 { color: #1a2980; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 2px solid #eaeaea; }
+        .upload-area { border: 3px dashed #26d0ce; border-radius: 15px; padding: 40px 20px; text-align: center; background: #f0fdff; cursor: pointer; transition: all 0.3s; margin-bottom: 25px; }
+        .upload-area:hover { background: #e0f7fa; border-color: #1a9988; }
+        #fileInput { display: none; }
+        .btn { background: linear-gradient(90deg, #1a2980, #26d0ce); color: white; border: none; padding: 15px 30px; border-radius: 50px; font-size: 1.1em; font-weight: bold; cursor: pointer; display: inline-flex; align-items: center; gap: 10px; transition: all 0.2s; margin: 10px 5px; }
+        .btn:hover { transform: translateY(-3px); box-shadow: 0 7px 15px rgba(38, 208, 206, 0.4); }
+        .btn-reset { background: linear-gradient(90deg, #757575, #9e9e9e); }
+        .tabs { display: flex; border-bottom: 2px solid #eaeaea; margin-bottom: 20px; flex-wrap: wrap; }
+        .tab { padding: 12px 25px; cursor: pointer; border-radius: 10px 10px 0 0; font-weight: bold; color: #666; transition: all 0.3s; }
+        .tab.active { background: #1a2980; color: white; }
+        .tab-content { display: none; animation: fadeIn 0.5s; }
+        .tab-content.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .result-box { background: white; border-radius: 10px; padding: 20px; border: 1px solid #ddd; max-height: 500px; overflow-y: auto; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th { background: #1a2980; color: white; padding: 12px; text-align: left; }
+        td { padding: 12px; border-bottom: 1px solid #eee; }
+        tr:hover { background-color: #f5f5f5; }
+        .status-bar { background: #e8f5e9; padding: 12px; border-radius: 10px; margin: 20px 0; border-left: 5px solid #4caf50; }
+        .loading { display: none; text-align: center; padding: 20px; }
+        .spinner { border: 5px solid #f3f3f3; border-top: 5px solid #26d0ce; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 15px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        /* 零件图纸标注区域特有样式 */
+        .canvas-container { border: 1px solid #ccc; border-radius: 10px; margin-top: 15px; overflow: auto; max-height: 500px; background: #fafafa; text-align: center; }
+        #drawingCanvas { max-width: 100%; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        .canvas-controls { display: flex; justify-content: center; gap: 10px; margin: 15px 0; flex-wrap: wrap; }
+        .canvas-controls .btn { padding: 10px 20px; font-size: 0.9em; }
+        .part-list-sidebar { max-height: 400px; overflow-y: auto; margin-top: 15px; padding: 10px; border: 1px solid #eaeaea; border-radius: 10px; }
+        .part-item { padding: 8px 12px; margin-bottom: 8px; background: #f1f8ff; border-left: 4px solid #1a2980; cursor: pointer; border-radius: 5px; transition: all 0.3s; }
+        .part-item:hover { background: #e3f2fd; transform: translateX(5px); }
+        .highlight { color: #d32f2f; font-weight: bold; }
+        .success { color: #388e3c; }
+        footer { text-align: center; padding: 20px; color: #777; font-size: 0.9em; border-top: 1px solid #eee; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><i class="fas fa-robot"></i> 创兴精密 - AI图纸智能识别与拆解系统</h1>
+            <p>针对“小批量、多品种、非标定制”生产痛点的一站式智能解决方案</p>
+        </header>
+        <div class="pain-points">
+            <strong>🔍 直击企业核心痛点：</strong> 订单响应慢 | 高度依赖人工经验拆图 | 数据孤岛管理困难 | 订单优先级混乱
+        </div>
+        <div class="content">
+            <!-- 左侧面板：上传与控制区 -->
+            <div class="left-panel panel">
+                <h2><i class="fas fa-cloud-upload-alt"></i> 1. 图纸上传</h2>
+                <div class="upload-area" onclick="document.getElementById('fileInput').click()">
+                    <i class="fas fa-file-import fa-3x"></i>
+                    <h3>点击或拖放上传图纸</h3>
+                    <p>支持格式：JPG, PNG, PDF, DXF, DWG</p>
+                    <input type="file" id="fileInput" accept="image/*">
+                </div>
+                <p id="fileName" style="text-align:center; margin-bottom:20px; color:#666;">未选择文件</p>
+                <h2><i class="fas fa-cogs"></i> 2. AI分析控制</h2>
+                <div style="text-align: center;">
+                    <button class="btn" onclick="startAnalysis()"><i class="fas fa-play-circle"></i> 启动AI智能识别与拆解</button>
+                    <button class="btn btn-reset" onclick="resetAll()"><i class="fas fa-redo"></i> 重置系统</button>
+                </div>
+                <div class="loading" id="loading">
+                    <div class="spinner"></div>
+                    <p>AI引擎正在工作：识别零件轮廓 · 解析尺寸标注 · 匹配工艺库 · 生成BOM...</p>
+                </div>
+                <div class="status-bar" id="statusBar">
+                    <i class="fas fa-info-circle success"></i>
+                    <span>系统就绪。请上传图纸并启动分析。</span>
+                </div>
+                <h2><i class="fas fa-lightbulb"></i> 3. 方案核心价值</h2>
+                <ul style="line-height: 1.8; padding-left: 20px;">
+                    <li><strong>效率提升</strong>：将数小时的拆图报价流程缩短至 <span class="highlight">数分钟</span>。</li>
+                    <li><strong>经验固化</strong>：将资深工程师经验转化为AI模型，降低对人依赖。</li>
+                    <li><strong>数据打通</strong>：自动生成结构化BOM，为ERP/MES系统提供数据源。</li>
+                    <li><strong>决策支持</strong>：为订单优先级排序提供量化依据（交期、利润、客户等级）。</li>
+                </ul>
+            </div>
+            <!-- 右侧面板：结果显示区 -->
+            <div class="right-panel panel">
+                <div class="tabs">
+                    <div class="tab active" onclick="switchTab(0)"><i class="fas fa-clipboard-list"></i> 拆解报告</div>
+                    <div class="tab" onclick="switchTab(1)"><i class="fas fa-project-diagram"></i> 零件图纸</div>
+                    <div class="tab" onclick="switchTab(2)"><i class="fas fa-cogs"></i> 零件清单 (BOM)</div>
+                    <div class="tab" onclick="switchTab(3)"><i class="fas fa-chart-line"></i> 效益分析</div>
+                </div>
+                <!-- 标签页1：拆解报告 -->
+                <div class="tab-content active" id="tab1">
+                    <h3>AI分析总览报告</h3>
+                    <div class="result-box">
+                        <div id="reportContent">
+                            <p>报告将在AI分析后生成。以下是模拟数据示例：</p>
+                            <ul>
+                                <li><strong>项目名称</strong>：生物质燃烧机外壳组件</li>
+                                <li><strong>订单号</strong>：ORD20250315</li>
+                                <li><strong>AI识别状态</strong>：<span class="success">待分析</span></li>
+                                <li><strong>识别零件总数</strong>：--</li>
+                                <li><strong>总重量估算</strong>：--</li>
+                                <li><strong>总工时估算</strong>：--</li>
+                                <li><strong>材料成本估算</strong>：--</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                <!-- 标签页2：零件图纸 (交互式标注) -->
+                <div class="tab-content" id="tab2">
+                    <h3><i class="fas fa-cube"></i> AI拆解零件可视化</h3>
+                    <p>系统已自动识别并框选出主要零件。点击右侧列表可高亮对应零件，支持图纸标注导出。</p>
+                    <div class="canvas-controls">
+                        <button class="btn" onclick="highlightPart('part1')"><i class="fas fa-search"></i> 高亮面板</button>
+                        <button class="btn" onclick="highlightPart('part2')"><i class="fas fa-search"></i> 高亮侧板</button>
+                        <button class="btn" onclick="resetHighlight()"><i class="fas fa-sync-alt"></i> 重置高亮</button>
+                        <button class="btn" onclick="downloadMarkedDrawing()"><i class="fas fa-download"></i> 下载标注图纸</button>
+                    </div>
+                    <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+                        <div style="flex: 3; min-width: 300px;">
+                            <div class="canvas-container">
+                                <canvas id="drawingCanvas" width="800" height="600"></canvas>
+                            </div>
+                        </div>
+                        <div style="flex: 1; min-width: 250px;">
+                            <h4><i class="fas fa-list-ol"></i> 零件列表</h4>
+                            <div class="part-list-sidebar" id="partList">
+                                <!-- 零件列表将通过JS动态生成 -->
+                            </div>
+                            <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 10px;">
+                                <h5><i class="fas fa-info-circle"></i> 使用说明</h5>
+                                <p><small>1. 左侧画布展示了AI自动识别的零件边界。<br>2. 点击列表或按钮可高亮特定零件。<br>3. 可使用“下载”功能导出标注图纸，用于生产指导。</small></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- 标签页3：零件清单 (BOM) -->
+                <div class="tab-content" id="tab3">
+                    <h3>零件明细表 (Bill of Materials)</h3>
+                    <div class="result-box">
+                        <table id="partsTable">
+                            <thead><tr><th>序号</th><th>零件名称</th><th>材质</th><th>厚度</th><th>尺寸(mm)</th><th>推荐工艺</th><th>数量</th></tr></thead>
+                            <tbody><tr><td colspan="7" style="text-align:center;">数据加载中...</td></tr></tbody>
+                        </table>
+                    </div>
+                </div>
+                <!-- 标签页4：效益分析 -->
+                <div class="tab-content" id="tab4">
+                    <h3>传统方式 vs. AI系统 效益对比</h3>
+                    <div class="result-box">
+                        <table>
+                            <thead><tr><th>对比指标</th><th>传统人工方式</th><th>本AI系统</th><th>提升效果</th></tr></thead>
+                            <tbody>
+                                <tr><td>报价响应时间</td><td>4-6 小时</td><td><span class="highlight">< 10 分钟</span></td><td><span class="success">效率提升约30倍</span></td></tr>
+                                <tr><td>拆图人工参与</td><td>工程师全程处理</td><td>工程师仅审核优化</td><td><span class="success">工作量减少70%</span></td></tr>
+                                <tr><td>数据准确性</td><td>依赖个人经验，易出错</td><td>基于全厂历史数据，标准化</td><td><span class="success">错误率下降85%</span></td></tr>
+                                <tr><td>订单转化率</td><td>响应慢，客户易流失</td><td>快速精准，增强客户信心</td><td><span class="success">预计提升15%</span></td></tr>
+                                <tr><td>管理成本</td><td>纸质图纸，难以检索追踪</td><td>全数字化，一键追溯</td><td><span class="success">管理效率飞跃</span></td></tr>
+                            </tbody>
+                        </table>
+                        <p style="margin-top: 20px; padding: 15px; background: #e8f5e9; border-radius: 8px;">
+                            <i class="fas fa-chart-bar"></i> <strong>投资回报测算</strong>：以企业年处理2000份订单计，本系统预计可节约工程师工时约 <span class="highlight">3200小时/年</span>，直接与间接创造年化价值超过 <span class="highlight">50万元</span>。
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <footer>
+            <p>© 2024 创兴精密AI数字化小组 | 本演示系统模拟了AI图纸识别的完整业务流程与价值产出 | 仅供课程作业汇报使用</p>
+        </footer>
+    </div>
+
+    <script>
+        // ============== 全局变量与模拟数据 ==============
+        let fabricCanvas = null; // 用于图纸标注的画布对象
+        // 模拟AI分析报告
+        const sampleReport = {
+            projectName: "生物质燃烧机外壳组件",
+            orderId: "ORD20250315",
+            status: "✅ 分析完成",
+            totalParts: 19,
+            totalWeight: "≈125kg",
+            totalHours: "16 小时",
+            materialCost: "¥8,200",
+            totalCost: "¥12,540",
+            suggestion: "建议优先排产，关键工序为激光切割与焊接。"
+        };
+        // 模拟零件清单 (BOM)
+        const sampleParts = [
+            ["面板-01", "Q235钢板", "2.0mm", "500x300", "激光切割", 2],
+            ["侧板-02", "304不锈钢", "1.5mm", "200x150", "激光切割→折弯", 4],
+            ["支架-03", "镀锌板", "3.0mm", "80x80", "冲压", 12],
+            ["底板-04", "铝板", "5.0mm", "1000x800", "激光切割", 1],
+            ["加强筋-05", "Q235钢板", "2.5mm", "450x40", "激光切割→折弯", 8],
+            ["连接片-06", "镀锌板", "1.2mm", "60x40", "冲压", 24]
+        ];
+        // 模拟图纸上零件框的数据
+        const partRectangles = [
+            { id: 'part1', name: '面板-01', left: 50, top: 60, width: 200, height: 120, color: 'rgba(255, 50, 50, 0.3)' },
+            { id: 'part2', name: '侧板-02', left: 300, top: 80, width: 100, height: 180, color: 'rgba(50, 150, 255, 0.3)' },
+            { id: 'part3', name: '支架-03', left: 150, top: 250, width: 80, height: 80, color: 'rgba(50, 255, 100, 0.3)' },
+            { id: 'part4', name: '底板-04', left: 400, top: 300, width: 250, height: 150, color: 'rgba(255, 200, 50, 0.3)' },
+        ];
+
+        // ============== 通用界面功能函数 ==============
+        function switchTab(index) {
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            document.querySelectorAll('.tab')[index].classList.add('active');
+            document.querySelectorAll('.tab-content')[index].classList.add('active');
+        }
+        function updateStatus(message, type = 'info') {
+            const icon = type === 'success' ? 'fa-check-circle' : 'fa-info-circle';
+            const colorClass = type === 'success' ? 'success' : '';
+            document.getElementById('statusBar').innerHTML = `<i class="fas ${icon} ${colorClass}"></i> <span>${message}</span>`;
+        }
+
+        // ============== 图纸标注与交互功能 (核心) ==============
+        function initDrawingCanvas(imageUrl) {
+            const canvasEl = document.getElementById('drawingCanvas');
+            fabricCanvas = new fabric.Canvas('drawingCanvas');
+            // 加载上传的图片作为画布背景
+            fabric.Image.fromURL(imageUrl, function(img) {
+                const scale = Math.min(canvasEl.width / img.width, canvasEl.height / img.height, 1);
+                img.scale(scale);
+                fabricCanvas.setWidth(img.width * scale);
+                fabricCanvas.setHeight(img.height * scale);
+                fabricCanvas.setBackgroundImage(img, fabricCanvas.renderAll.bind(fabricCanvas));
+                // 在背景图上添加模拟的零件框
+                addMockPartRectangles();
+                // 生成右侧的交互零件列表
+                generatePartList();
+            });
+        }
+        function addMockPartRectangles() {
+            partRectangles.forEach(part => {
+                const rect = new fabric.Rect({
+                    left: part.left, top: part.top, fill: part.color,
+                    width: part.width, height: part.height,
+                    stroke: 'black', strokeWidth: 2, strokeDashArray: [5, 5],
+                    selectable: false, hasControls: false, name: part.name, partId: part.id
+                });
+                const text = new fabric.Text(part.name, {
+                    left: part.left + 5, top: part.top - 25,
+                    fontSize: 16, fill: '#1a2980', fontWeight: 'bold', fontFamily: 'Arial'
+                });
+                fabricCanvas.add(rect, text);
+            });
+            fabricCanvas.renderAll();
+        }
+        function generatePartList() {
+            const listContainer = document.getElementById('partList');
+            listContainer.innerHTML = '';
+            const partData = [
+                { id: 'part1', name: '面板-01', desc: '主结构件，激光切割' },
+                { id: 'part2', name: '侧板-02', desc: '支撑件，需折弯' },
+                { id: 'part3', name: '支架-03', desc: '连接件，冲压成型' },
+                { id: 'part4', name: '底板-04', desc: '承载件，整体切割' },
+            ];
+            partData.forEach(part => {
+                const item = document.createElement('div');
+                item.className = 'part-item';
+                item.innerHTML = `<strong>${part.name}</strong><br><small>${part.desc}</small>`;
+                item.onclick = () => highlightPart(part.id);
+                listContainer.appendChild(item);
+            });
+        }
+        function highlightPart(partId) {
+            fabricCanvas.getObjects('rect').forEach(obj => {
+                const original = partRectangles.find(p => p.id === obj.partId);
+                if (original) obj.set({ fill: original.color, strokeWidth: 2 });
+            });
+            const target = fabricCanvas.getObjects('rect').find(obj => obj.partId === partId);
+            if (target) {
+                target.set({ fill: 'rgba(255, 0, 0, 0.6)', strokeWidth: 4 });
+                fabricCanvas.renderAll();
+            }
+        }
+        function resetHighlight() {
+            fabricCanvas.getObjects('rect').forEach(obj => {
+                const original = partRectangles.find(p => p.id === obj.partId);
+                if (original) obj.set({ fill: original.color, strokeWidth: 2 });
+            });
+            fabricCanvas.renderAll();
+        }
+        function downloadMarkedDrawing() {
+            const link = document.createElement('a');
+            link.download = `AI拆解图纸_${sampleReport.orderId}.png`;
+            link.href = fabricCanvas.toDataURL({ format: 'png', quality: 1.0 });
+            link.click();
+            updateStatus(`✅ 标注图纸已下载，可用于车间生产指导。`, 'success');
+        }
+
+        // ============== 主流程控制函数 ==============
+        // 文件选择处理
+        document.getElementById('fileInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                document.getElementById('fileName').innerHTML = `<i class="fas fa-file"></i> 已选择：<strong>${file.name}</strong>`;
+                updateStatus(`已准备分析文件：“${file.name}”。`, 'info');
+            }
+        });
+        // 核心：模拟AI分析全过程
+        function startAnalysis() {
+            const fileInput = document.getElementById('fileInput');
+            if (!fileInput.files[0]) { alert("请先上传一张图纸文件。"); return; }
+            // 显示加载动画
+            document.getElementById('loading').style.display = 'block';
+            updateStatus('AI引擎启动：正在识别图纸特征、拆解零件、匹配工艺库...', 'info');
+            // 模拟3秒的AI处理过程
+            setTimeout(() => {
+                document.getElementById('loading').style.display = 'none';
+                // 1. 更新总览报告
+                const reportHtml = `<ul>
+                    <li><strong>项目名称</strong>：${sampleReport.projectName}</li>
+                    <li><strong>订单号</strong>：${sampleReport.orderId}</li>
+                    <li><strong>AI识别状态</strong>：<span class="success">${sampleReport.status}</span></li>
+                    <li><strong>识别零件总数</strong>：<span class="highlight">${sampleReport.totalParts} 个</span></li>
+                    <li><strong>总重量估算</strong>：${sampleReport.totalWeight}</li>
+                    <li><strong>总工时估算</strong>：${sampleReport.totalHours}</li>
+                    <li><strong>材料成本估算</strong>：${sampleReport.materialCost}</li>
+                    <li><strong>总计成本（材料+人工）</strong>：<span class="highlight">${sampleReport.totalCost}</span></li>
+                    <li><strong>AI生产建议</strong>：${sampleReport.suggestion}</li>
+                </ul>`;
+                document.getElementById('reportContent').innerHTML = reportHtml;
+                // 2. 更新零件表格 (BOM)
+                const tableBody = document.querySelector('#partsTable tbody');
+                tableBody.innerHTML = '';
+                sampleParts.forEach((part, idx) => {
+                    const row = `<tr><td>${idx+1}</td><td>${part[0]}</td><td>${part[1]}</td><td>${part[2]}</td><td>${part[3]}</td><td>${part[4]}</td><td>${part[5]}</td></tr>`;
+                    tableBody.innerHTML += row;
+                });
+                // 3. 初始化交互式图纸标注
+                const imageUrl = URL.createObjectURL(fileInput.files[0]);
+                if (typeof fabric !== 'undefined') {
+                    setTimeout(() => initDrawingCanvas(imageUrl), 100);
+                }
+                // 4. 切换到报告页并更新状态
+                switchTab(0);
+                updateStatus(`✅ 分析成功！共识别出 ${sampleReport.totalParts} 个零件，已生成完整BOM与工艺路线。`, 'success');
+            }, 3000);
+        }
+        // 重置系统
+        function resetAll() {
+            document.getElementById('fileInput').value = '';
+            document.getElementById('fileName').innerHTML = '未选择文件';
+            document.getElementById('reportContent').innerHTML = '<p>报告将在AI分析后生成。</p>';
+            document.querySelector('#partsTable tbody').innerHTML = '<tr><td colspan="7" style="text-align:center;">数据加载中...</td></tr>';
+            document.getElementById('loading').style.display = 'none';
+            if (fabricCanvas) { fabricCanvas.dispose(); fabricCanvas = null; }
+            document.getElementById('partList').innerHTML = '';
+            updateStatus('系统已重置。请上传图纸并启动分析。', 'info');
+            switchTab(0);
+        }
+        // 页面初始化
+        updateStatus('系统就绪。请上传图纸并启动分析。', 'info');
+    </script>
+</body>
+</html>
